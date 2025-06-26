@@ -119,6 +119,10 @@ function buildTiles(w, h) {
         resizeContainer.appendChild(fullscreenBtn);
 
         document.body.appendChild(resizeContainer);
+        // Clicking anywhere else on the page will toggle fullscreen for this view
+        document.body.addEventListener('click', () => {
+          ipcRenderer.send('view-clicked', idx);
+        });
       `);
       // Initialize scrolling properties for each view
       v.__scrollDirection = 1; // 1 for down, -1 for up
@@ -385,6 +389,22 @@ function create() {
     } else {
       v.webContents.setFullScreen(true);
       win.setTopBrowserView(v); // Bring the clicked view to front
+    }
+  });
+
+  // Handler for fullscreen button inside a view
+  ipcMain.on('toggle-view-fullscreen', (_, idx) => {
+    const v = views[idx];
+    if (!v) return;
+    if (v.webContents.isFullScreen()) {
+      v.webContents.setFullScreen(false);
+      if (v.__orig) {
+        v.setBounds(v.__orig);
+      }
+      win.setTopBrowserView(headerView);
+    } else {
+      v.webContents.setFullScreen(true);
+      win.setTopBrowserView(v);
     }
   });
 
