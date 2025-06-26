@@ -59,7 +59,9 @@ function buildTiles(w, h) {
   const base = 1280; // Reintroduce base for default scaling
 
   urls.forEach((u, i) => {
-    const v = new BrowserView();
+    const v = new BrowserView({
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
     win.addBrowserView(v);
 
     const col = i % COLS, row = (i / COLS) | 0;
@@ -114,14 +116,14 @@ function buildTiles(w, h) {
         fullscreenBtn.style.cssText = 'background:#555; color:white; border:none; border-radius:3px; padding:2px 5px; cursor:pointer; font-size:10px;';
         fullscreenBtn.onclick = (e) => {
           e.stopPropagation(); // Prevent click from propagating
-          ipcRenderer.send('toggle-view-fullscreen', idx); // Send index to main process
+          ipcRenderer.send('open-view-popup', ${i}); // Send index to main process
         };
         resizeContainer.appendChild(fullscreenBtn);
 
         document.body.appendChild(resizeContainer);
         // Clicking anywhere else on the page will toggle fullscreen for this view
         document.body.addEventListener('click', () => {
-          ipcRenderer.send('view-clicked', idx);
+          ipcRenderer.send('open-view-popup', ${i});
         });
       `);
       // Initialize scrolling properties for each view
@@ -367,54 +369,25 @@ function create() {
       }
       win.setTopBrowserView(v); // Bring enlarged view to front
     }
-    // No specific handling for currentLevel === 3 as it's now handled by 'toggle-view-fullscreen'
+    // No specific handling for currentLevel === 3 as popup windows now handle fullscreen
 
-    // Always set bounds as toggle-view-fullscreen will handle the true fullscreen state
+    // Always set bounds; the popup window takes care of true fullscreen
     v.setBounds({ x: newX, y: newY, width: newWidth, height: newHeight });
   });
 
-  // IPC handler for clicking on a view to go fullscreen
-  ipcMain.on('view-clicked', (_, idx) => {
-    console.log('Main: Received view-clicked IPC for view:', idx); // Debug log
-    const v = views[idx];
-    if (!v) return;
+  // IPC handler for opening a popup window showing the view fullscreen
+  ipcMain.on('open-view-popup', (_, idx) => {
+    const url = urls[idx];
+    if (!url) return;
 
-    // Directly toggle fullscreen for this view
-    if (v.webContents.isFullScreen()) {
-      v.webContents.setFullScreen(false);
-      if (v.__orig) {
-        v.setBounds(v.__orig);
-      }
-      win.setTopBrowserView(headerView); // Bring header back to front
-    } else {
-      v.webContents.setFullScreen(true);
-      win.setTopBrowserView(v); // Bring the clicked view to front
-    }
-  });
-
-  // Handler for fullscreen button inside a view
-  ipcMain.on('toggle-view-fullscreen', (_, idx) => {
-    const v = views[idx];
-    if (!v) return;
-    if (v.webContents.isFullScreen()) {
-      v.webContents.setFullScreen(false);
-      if (v.__orig) {
-        v.setBounds(v.__orig);
-      }
-      win.setTopBrowserView(headerView);
-    } else {
-      v.webContents.setFullScreen(true);
-      win.setTopBrowserView(v);
-    }
-  });
-
-  // New IPC handler for testing fullscreen directly
-  ipcMain.on('test-fullscreen-view', (_, idx) => {
-    const v = views[idx];
-    if (!v) return;
-    console.log(`Main: Forcing view ${idx} to fullscreen for testing.`);
-    v.webContents.setFullScreen(true);
-    win.setTopBrowserView(v); // Bring to front
+    const popup = new BrowserWindow({
+      fullscreen: true,
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    popup.loadURL(url);
+    popup.webContents.on('did-finish-load', () => {
+      popup.webContents.setZoomFactor(zooms[idx] || 1);
+    });
   });
 }
 
