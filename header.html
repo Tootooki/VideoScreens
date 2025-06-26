@@ -1,0 +1,114 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>
+  body{margin:0;font:12px Arial;background:#222;color:#fff;height:100vh;display:flex;flex-direction:column}
+  #bar{height:35px;display:flex;align-items:center;padding:0 6px;background:#222}
+  button{margin-right:6px;padding:4px 8px;font-size:11px;border:none;border-radius:3px;background:#444;color:#fff;cursor:pointer}
+  #editor-container{display:none;flex:1;flex-direction:column;background:#111;}
+  #editor{display:flex;flex-wrap:wrap;gap:4px;padding:8px;overflow:auto;background:#111}
+  #editor input{width:260px;padding:3px;border-radius:3px;border:1px solid #666;background:#000;color:#eee}
+  .active{background:#0a0}
+  </style></head><body>
+  <div id="bar">
+    <button id="live">LIVE VIEW</button>
+    <button id="set">SET VIEW</button>
+    <button id="full">FULL SCREEN</button>
+    <button id="shot">SCREENSHOT</button>
+    <button id="refresh">REFRESH/STOP</button>
+  </div>
+  <div id="editor-container">
+    <div id="editor"></div>
+  </div>
+  
+  <script>
+  const { ipcRenderer } = require('electron');
+  let isSet = false;
+  
+  function buildEditor(urls, initialZooms) {
+    console.log('Header: buildEditor called with URLs:', urls, 'and initialZooms:', initialZooms); // Debug log
+    const e = document.getElementById('editor');
+    e.innerHTML = '';
+    // Load zooms from initialZooms or session storage or default
+    let zooms = initialZooms || JSON.parse(sessionStorage.getItem('zooms') || '[]');
+    if (zooms.length !== urls.length) {
+      console.log('Header: Adjusting zooms array length.'); // Debug log
+      zooms = Array(urls.length).fill(1.0);
+    }
+    urls.forEach((u,i) => {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex';
+      wrap.style.alignItems = 'center';
+      wrap.style.marginBottom = '2px';
+      const inp = document.createElement('input');
+      inp.value = u;
+      inp.dataset.idx = i;
+      wrap.appendChild(inp);
+      // Minus button
+      const minus = document.createElement('button');
+      minus.textContent = '-';
+      minus.onclick = () => {
+        zooms[i] = Math.max(0.2, +(zooms[i] - 0.1).toFixed(2));
+        sessionStorage.setItem('zooms', JSON.stringify(zooms));
+        updateZoomLabel(i);
+        console.log(`Header: Sending set-zoom IPC for view ${i} with zoom: ${zooms[i].toFixed(2)}`); // Debug log
+        ipcRenderer.send('set-zoom', { idx: i, zoom: zooms[i] });
+      };
+      wrap.appendChild(minus);
+      // Plus button
+      const plus = document.createElement('button');
+      plus.textContent = '+';
+      plus.onclick = () => {
+        zooms[i] = Math.min(3, +(zooms[i] + 0.1).toFixed(2));
+        sessionStorage.setItem('zooms', JSON.stringify(zooms));
+        updateZoomLabel(i);
+        console.log(`Header: Sending set-zoom IPC for view ${i} with zoom: ${zooms[i].toFixed(2)}`); // Debug log
+        ipcRenderer.send('set-zoom', { idx: i, zoom: zooms[i] });
+      };
+      wrap.appendChild(plus);
+      // Zoom label
+      const label = document.createElement('span');
+      label.style.margin = '0 6px';
+      label.id = 'zoom-label-' + i;
+      label.textContent = Math.round((zooms[i] || 1.0) * 100) + '%';
+      wrap.appendChild(label);
+      e.appendChild(wrap);
+    });
+    console.log('Header: Finished building editor with current zooms:', zooms); // Debug log
+    function updateZoomLabel(i) {
+      const label = document.getElementById('zoom-label-' + i);
+      if (label) label.textContent = Math.round((zooms[i] || 1.0) * 100) + '%';
+      console.log(`Header: Updated zoom label for view ${i} to: ${label.textContent}`); // Debug log
+    }
+  }
+  
+  ipcRenderer.on('editor-show', (_, urls, zooms) => {
+    console.log('Header: Received editor-show IPC with URLs:', urls, 'and Zooms:', zooms); // Debug log
+    buildEditor(urls, zooms);
+  });
+  
+  document.getElementById('set').onclick = () => {
+    if (isSet) return;
+    isSet = true;
+    document.getElementById('editor-container').style.display = 'flex';
+    console.log('Header: Sending set-mode IPC: set'); // Debug log
+    ipcRenderer.send('set-mode', 'set');
+  };
+  
+  document.getElementById('live').onclick = () => {
+    if (!isSet) return;
+    isSet = false;
+    const urls = [...document.querySelectorAll('#editor input')].map(i => i.value.trim() || 'about:blank');
+    console.log('Header: Sending update-urls IPC with new URLs:', urls); // Debug log
+    ipcRenderer.send('update-urls', urls);
+    document.getElementById('editor-container').style.display = 'none';
+    console.log('Header: Sending set-mode IPC: live'); // Debug log
+    ipcRenderer.send('set-mode', 'live');
+  };
+  
+  document.getElementById('full').onclick  = () => ipcRenderer.send('toggle-fullscreen');
+  document.getElementById('shot').onclick  = () => ipcRenderer.send('screenshot');
+  document.getElementById('refresh').onclick = (e) => {
+    e.target.classList.toggle('active');
+    ipcRenderer.send('refresh-toggle');
+  };
+  </script></body></html>
+  
